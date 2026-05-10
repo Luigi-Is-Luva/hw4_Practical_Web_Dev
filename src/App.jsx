@@ -1,103 +1,127 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import "./App.css";
-import soupealoignon from "./templates/soupealoignon.png";
+import soupealoignon    from "./templates/soupealoignon.png";
 import CroissantauJambon from "./templates/CroissantauJambon.png";
-import QuicheLorraine from "./templates/QuicheLorraine.png";
+import QuicheLorraine   from "./templates/QuicheLorraine.png";
 import BoeufBourguignon from "./templates/BoeufBourguignon.png";
-import Ratatouille from "./templates/Ratatouille.png";
-import PouletProvencal from "./templates/PouletProvencal.png";
-import CrêpesSuzette from "./templates/CrêpesSuzette.png";
+import Ratatouille      from "./templates/Ratatouille.png";
+import PouletProvencal  from "./templates/PouletProvencal.png";
+import CrêpesSuzette    from "./templates/CrêpesSuzette.png";
 
-import galleryone from "./templates/galleryone.png";
+import galleryone   from "./templates/galleryone.png";
 import gallerysecond from "./templates/gallerysecond.png";
 import gallerythree from "./templates/gallerythree.png";
 
-import { FaShoppingCart, FaPizzaSlice, FaInstagram, FaFacebookF, FaTwitter, FaTimes, FaPlus, FaMinus, FaTrash } from 'react-icons/fa';
+import { FaShoppingCart, FaPizzaSlice, FaInstagram, FaFacebookF, FaTwitter, FaTimes, FaPlus, FaMinus, FaTrash, FaBars } from 'react-icons/fa';
 
-const galleryimg= [galleryone,gallerysecond,gallerythree]
-const menuItems = [
-  {
-    id: 1,
-    name: "Soupe à l'Oignon",
-    ingredients: "onions beef broth baguette crouton gruyère cheese",
-    price: 8.99,
-    image: soupealoignon,
-  },
-  {
-    id: 2,
-    name: "Croissant au Jambon",
-    ingredients: "croissant dough ham dijon mustard swiss cheese",
-    price: 6.49,
-    image: CroissantauJambon,
-  },
-  {
-    id: 3,
-    name: "Quiche Lorraine",
-    ingredients: "shortcrust pastry bacon lardons eggs cream gruyère",
-    price: 11.99,
-    image: QuicheLorraine,
-  },
-  {
-    id: 4,
-    name: "Boeuf Bourguignon",
-    ingredients: "beef chuck red wine carrots mushrooms pearl onions thyme",
-    price: 18.99,
-    image: BoeufBourguignon,
-  },
-  {
-    id: 5,
-    name: "Ratatouille",
-    ingredients: "zucchini eggplant bell peppers tomatoes olive oil herbes de Provence",
-    price: 13.49,
-    image: Ratatouille,
-  },
-  {
-    id: 6,
-    name: "Poulet Provençal",
-    ingredients: "chicken thighs tomatoes olives garlic rosemary white wine",
-    price: 16.99,
-    image: PouletProvencal,
-  },
-  {
-    id: 7,
-    name: "Crêpes Suzette",
-    ingredients: "flour eggs milk butter orange zest Grand Marnier",
-    price: 9.49,
-    image: CrêpesSuzette,
-  },
-];
+const galleryimg = [galleryone, gallerysecond, gallerythree];
 
+// Maps imageKey stored in MongoDB → locally bundled image
+const imageMap = {
+  soupealoignon,
+  CroissantauJambon,
+  QuicheLorraine,
+  BoeufBourguignon,
+  Ratatouille,
+  PouletProvencal,
+  'CrêpesSuzette': CrêpesSuzette,
+};
+
+const API = import.meta.env.VITE_API_BASE_URL ?? '';
+
+function getSessionId() {
+  let id = localStorage.getItem('luigis_session');
+  if (!id) {
+    id = crypto.randomUUID();
+    localStorage.setItem('luigis_session', id);
+  }
+  return id;
+}
+
+function toDBItem(item) {
+  return {
+    menuItemId: item.id,
+    name:       item.name,
+    price:      item.price,
+    quantity:   item.quantity,
+    imageKey:   item.imageKey,
+  };
+}
 
 export default function App() {
-  const [curr_cart, setCurr_Cart] = useState([]);
-  const [cartOpen, setCartOpen] = useState(false);
+  const [menuItems,  setMenuItems]  = useState([]);
+  const [menuLoading, setMenuLoading] = useState(true);
+  const [curr_cart,  setCurr_Cart]  = useState([]);
+  const [cartOpen,   setCartOpen]   = useState(false);
+  const [lastOrder,  setLastOrder]  = useState(null);
+  const [sessionId]                 = useState(getSessionId);
+
+  // Fetch menu from backend on mount
+  useEffect(() => {
+    fetch(`${API}/api/menu`)
+      .then(r => r.json())
+      .then(data => {
+        setMenuItems(data.map(item => ({
+          ...item,
+          id:    item._id,
+          image: imageMap[item.imageKey] ?? null,
+        })));
+      })
+      .catch(err => console.error('Failed to load menu:', err))
+      .finally(() => setMenuLoading(false));
+  }, []);
+
+  // Sync cart to DB whenever it changes
+  useEffect(() => {
+    fetch(`${API}/api/cart/${sessionId}`, {
+      method:  'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body:    JSON.stringify({ items: curr_cart.map(toDBItem) }),
+    }).catch(() => {});
+  }, [curr_cart, sessionId]);
 
   function addToCart(item) {
-    setCurr_Cart(prevCart => {
-      const existing = prevCart.find(i => i.id === item.id);
-      if (existing) {
-        return prevCart.map(i => i.id === item.id ? {...i, quantity: i.quantity + 1} : i);
-      }
-      return [...prevCart, {...item, quantity: 1}];
+    setCurr_Cart(prev => {
+      const existing = prev.find(i => i.id === item.id);
+      if (existing) return prev.map(i => i.id === item.id ? { ...i, quantity: i.quantity + 1 } : i);
+      return [...prev, { ...item, quantity: 1 }];
     });
   }
 
   function removeFromCart(id) {
-    setCurr_Cart(prevCart => prevCart.filter(i => i.id !== id));
+    setCurr_Cart(prev => prev.filter(i => i.id !== id));
   }
 
   function updateQuantity(id, delta) {
-    setCurr_Cart(prevCart =>
-      prevCart
-        .map(i => i.id === id ? {...i, quantity: i.quantity + delta} : i)
-        .filter(i => i.quantity > 0)
+    setCurr_Cart(prev =>
+      prev.map(i => i.id === id ? { ...i, quantity: i.quantity + delta } : i)
+          .filter(i => i.quantity > 0)
     );
+  }
+
+  async function checkout() {
+    const total = curr_cart.reduce((sum, i) => sum + i.price * i.quantity, 0);
+    try {
+      const res = await fetch(`${API}/api/orders`, {
+        method:  'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body:    JSON.stringify({ items: curr_cart.map(toDBItem), total }),
+      });
+      const order = await res.json();
+      setLastOrder(order);
+      setCurr_Cart([]);
+      setCartOpen(false);
+      // Clear persisted cart from DB
+      fetch(`${API}/api/cart/${sessionId}`, { method: 'DELETE' }).catch(() => {});
+    } catch (err) {
+      console.error('Checkout failed:', err);
+    }
   }
 
   return (
     <div>
       <Navigation current_cart={curr_cart} onCartClick={() => setCartOpen(true)} />
-      <Home addToCart={addToCart} />
+      <Home addToCart={addToCart} menuItems={menuItems} menuLoading={menuLoading} />
       <Footer />
       <CartDrawer
         cart={curr_cart}
@@ -105,71 +129,86 @@ export default function App() {
         onClose={() => setCartOpen(false)}
         onRemove={removeFromCart}
         onUpdateQuantity={updateQuantity}
+        onCheckout={checkout}
       />
+      {lastOrder && (
+        <OrderConfirmation order={lastOrder} onClose={() => setLastOrder(null)} />
+      )}
     </div>
   );
 }
 
-function Navigation({current_cart, onCartClick}){
+function Navigation({ current_cart, onCartClick }) {
   const totalItems = current_cart.reduce((sum, i) => sum + i.quantity, 0);
-  return(
+  const [menuOpen, setMenuOpen] = useState(false);
+
+  function closeMenu() { setMenuOpen(false); }
+
+  return (
     <nav className="navbar">
-        <div className="navbar-logo">
-            <FaPizzaSlice className="navbar-logo-icon" />
-            <span className="navbar-logo-text">Luigi's</span>
-        </div>
+      <div className="navbar-logo">
+        <FaPizzaSlice className="navbar-logo-icon" />
+        <span className="navbar-logo-text">Luigi's</span>
+      </div>
 
-        <div className="navbar-links">
-            <a href="#Home">Home</a>
-            <a href="#Menu">Menu</a>
-            <a href="#Gallery">Gallery</a>
-            <a href="#About">About</a>
-            <a href="#Contact">Contact</a>
-        </div>
+      <div className={`navbar-links${menuOpen ? ' navbar-links-open' : ''}`}>
+        <a href="#Home"    onClick={closeMenu}>Home</a>
+        <a href="#Menu"    onClick={closeMenu}>Menu</a>
+        <a href="#Gallery" onClick={closeMenu}>Gallery</a>
+        <a href="#About"   onClick={closeMenu}>About</a>
+        <a href="#Contact" onClick={closeMenu}>Contact</a>
+      </div>
 
+      <div className="navbar-right">
         <button className="navbar-cart" onClick={onCartClick}>
-            <FaShoppingCart />
-            {totalItems > 0 && (
-                <span className="navbar-cart-count">{totalItems}</span>
-            )}
+          <FaShoppingCart />
+          {totalItems > 0 && <span className="navbar-cart-count">{totalItems}</span>}
         </button>
+        <button className="hamburger" onClick={() => setMenuOpen(o => !o)} aria-label="Toggle menu">
+          {menuOpen ? <FaTimes /> : <FaBars />}
+        </button>
+      </div>
     </nav>
   );
 }
 
-function Home({addToCart}){
-     return(
-     <div id="Home">
-         <div className="hero">
-              <div className="hero-overlay" />
-              <div className="hero-content">
-                  <h1 className="hero-title">Luigi's</h1>
-                  <p className="hero-subtitle">Authentic Italian Cuisine in the Heart of the City</p>
-                  <a href="#menu" className="hero-btn">View Our Menu</a>
-              </div>
-         </div>
+function Home({ addToCart, menuItems, menuLoading }) {
+  return (
+    <div id="Home">
+      <div className="hero">
+        <div className="hero-overlay" />
+        <div className="hero-content">
+          <h1 className="hero-title">Luigi's</h1>
+          <p className="hero-subtitle">Authentic Italian Cuisine in the Heart of the City</p>
+          <a href="#Menu" className="hero-btn">View Our Menu</a>
+        </div>
+      </div>
 
-         <Menu_List addToCart={addToCart}/>
-         <Gallery/>
-         <About/>
-         <Contact />
-     </div>
-     );
+      <Menu_List addToCart={addToCart} menuItems={menuItems} menuLoading={menuLoading} />
+      <Gallery />
+      <About />
+      <Contact />
+    </div>
+  );
 }
 
-function Menu_List({addToCart}){
-    return(
-      <section className="menu-section" id="Menu">
-        <h2 className="menu-title">Our Menu</h2>
+function Menu_List({ addToCart, menuItems, menuLoading }) {
+  return (
+    <section className="menu-section" id="Menu">
+      <h2 className="menu-title">Our Menu</h2>
+      {menuLoading ? (
+        <p className="menu-loading">Loading menu…</p>
+      ) : (
         <ul className="menu-list">
-          {menuItems.map((item) => <Menu_Item key={item.id} food={item} addToCart={addToCart} />)}
+          {menuItems.map(item => <Menu_Item key={item.id} food={item} addToCart={addToCart} />)}
         </ul>
-      </section>
-    )
+      )}
+    </section>
+  );
 }
 
-function Menu_Item({food, addToCart}){
-  return(
+function Menu_Item({ food, addToCart }) {
+  return (
     <li className="menu-item">
       <img className="menu-item-img" src={food.image} alt={food.name} />
       <div className="menu-item-info">
@@ -182,31 +221,29 @@ function Menu_Item({food, addToCart}){
         <button className="menu-item-btn" onClick={() => addToCart(food)}>Add to cart</button>
       </div>
     </li>
-  )
+  );
 }
 
-function Gallery(){
-  const [current, setCurrent] = useState(0)
-    function goLeft() {
-    setCurrent((current - 1 + galleryimg.length) % galleryimg.length);
-  }
-  function goRight() {
-    setCurrent((current + 1) % galleryimg.length);
-  }
-  return(
-<div id="Gallery" className="gallery-window">
-  <button className="gallery-btn gallery-btn-left" onClick={goLeft}>←</button>
-  <div className="gallery-track" style={{ transform: `translateX(-${current * 100}%)` }}>
-  <img src={galleryimg[0]} />
-  <img src={galleryimg[1]} />
-  <img src={galleryimg[2]} />
-  </div>
-  <button className="gallery-btn gallery-btn-right" onClick={goRight}>→</button>
-</div>);
+function Gallery() {
+  const [current, setCurrent] = useState(0);
+  function goLeft()  { setCurrent((current - 1 + galleryimg.length) % galleryimg.length); }
+  function goRight() { setCurrent((current + 1) % galleryimg.length); }
+
+  return (
+    <div id="Gallery" className="gallery-window">
+      <button className="gallery-btn gallery-btn-left"  onClick={goLeft}>←</button>
+      <div className="gallery-track" style={{ transform: `translateX(-${current * 100}%)` }}>
+        <img src={galleryimg[0]} alt="Gallery 1" />
+        <img src={galleryimg[1]} alt="Gallery 2" />
+        <img src={galleryimg[2]} alt="Gallery 3" />
+      </div>
+      <button className="gallery-btn gallery-btn-right" onClick={goRight}>→</button>
+    </div>
+  );
 }
 
-function About(){
-  return(
+function About() {
+  return (
     <section id="About" className="about-section">
       <h2 className="about-title">About Us</h2>
       <div className="about-content">
@@ -242,14 +279,14 @@ function About(){
   );
 }
 
-function Contact(){
-  return(
+function Contact() {
+  return (
     <section id="Contact" className="contact-section">
       <h2 className="contact-title">Contact Us</h2>
       <div className="contact-content">
         <form className="contact-form">
-          <input type="text" placeholder="Your Name" className="contact-input" />
-          <input type="email" placeholder="Your Email" className="contact-input" />
+          <input type="text"  placeholder="Your Name"    className="contact-input" />
+          <input type="email" placeholder="Your Email"   className="contact-input" />
           <textarea placeholder="Your Message" className="contact-textarea" rows="5" />
           <button type="submit" className="contact-btn">Send Message</button>
         </form>
@@ -261,14 +298,15 @@ function Contact(){
           allowFullScreen
           loading="lazy"
           className="contact-map"
+          title="Luigi's location"
         />
       </div>
     </section>
   );
 }
 
-function Footer(){
-  return(
+function Footer() {
+  return (
     <footer className="footer">
       <div className="footer-content">
         <div className="footer-brand">
@@ -310,10 +348,10 @@ function Footer(){
   );
 }
 
-function CartDrawer({cart, isOpen, onClose, onRemove, onUpdateQuantity}){
+function CartDrawer({ cart, isOpen, onClose, onRemove, onUpdateQuantity, onCheckout }) {
   const total = cart.reduce((sum, i) => sum + i.price * i.quantity, 0);
 
-  return(
+  return (
     <>
       {isOpen && <div className="cart-overlay" onClick={onClose} />}
       <div className={`cart-drawer ${isOpen ? 'cart-drawer-open' : ''}`}>
@@ -350,7 +388,7 @@ function CartDrawer({cart, isOpen, onClose, onRemove, onUpdateQuantity}){
                 <span>Total</span>
                 <span>${total.toFixed(2)}</span>
               </div>
-              <button className="cart-checkout-btn">Checkout</button>
+              <button className="cart-checkout-btn" onClick={onCheckout}>Checkout</button>
             </div>
           </>
         )}
@@ -359,3 +397,30 @@ function CartDrawer({cart, isOpen, onClose, onRemove, onUpdateQuantity}){
   );
 }
 
+function OrderConfirmation({ order, onClose }) {
+  return (
+    <div className="order-overlay">
+      <div className="order-modal">
+        <h2 className="order-modal-title">Order Placed!</h2>
+        <p className="order-modal-sub">Thank you for your order.</p>
+        <div className="order-modal-id">
+          <span>Order ID</span>
+          <code>{order._id}</code>
+        </div>
+        <div className="order-modal-items">
+          {order.items.map((item, i) => (
+            <div key={i} className="order-modal-row">
+              <span>{item.name} × {item.quantity}</span>
+              <span>${(item.price * item.quantity).toFixed(2)}</span>
+            </div>
+          ))}
+        </div>
+        <div className="order-modal-total">
+          <span>Total</span>
+          <span>${order.total.toFixed(2)}</span>
+        </div>
+        <button className="order-modal-btn" onClick={onClose}>Close</button>
+      </div>
+    </div>
+  );
+}
