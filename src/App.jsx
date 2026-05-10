@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import "./App.css";
 import soupealoignon    from "./templates/soupealoignon.png";
 import CroissantauJambon from "./templates/CroissantauJambon.png";
@@ -71,14 +71,24 @@ export default function App() {
       .finally(() => setMenuLoading(false));
   }, []);
 
-  // Sync cart to DB whenever it changes (skip empty to avoid race condition on mount)
+  // Sync cart to DB whenever it changes
+  const prevCartLength = useRef(null);
   useEffect(() => {
-    if (curr_cart.length === 0) return;
-    fetch(`${API}/api/cart/${sessionId}`, {
-      method:  'PUT',
-      headers: { 'Content-Type': 'application/json' },
-      body:    JSON.stringify({ items: curr_cart.map(toDBItem) }),
-    }).catch(() => {});
+    if (prevCartLength.current === null) {
+      prevCartLength.current = curr_cart.length;
+      return;
+    }
+    prevCartLength.current = curr_cart.length;
+
+    if (curr_cart.length === 0) {
+      fetch(`${API}/api/cart/${sessionId}`, { method: 'DELETE' }).catch(() => {});
+    } else {
+      fetch(`${API}/api/cart/${sessionId}`, {
+        method:  'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body:    JSON.stringify({ items: curr_cart.map(toDBItem) }),
+      }).catch(() => {});
+    }
   }, [curr_cart, sessionId]);
 
   function addToCart(item) {
