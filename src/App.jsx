@@ -71,8 +71,9 @@ export default function App() {
       .finally(() => setMenuLoading(false));
   }, []);
 
-  // Sync cart to DB whenever it changes
+  // Sync cart to DB whenever it changes (skip empty to avoid race condition on mount)
   useEffect(() => {
+    if (curr_cart.length === 0) return;
     fetch(`${API}/api/cart/${sessionId}`, {
       method:  'PUT',
       headers: { 'Content-Type': 'application/json' },

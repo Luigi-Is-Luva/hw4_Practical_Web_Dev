@@ -17,7 +17,7 @@ router.put('/:sessionId', async (req, res) => {
   try {
     const cart = await Cart.findOneAndUpdate(
       { sessionId: req.params.sessionId },
-      { items: req.body.items },
+      { $set: { items: req.body.items } },
       { new: true, upsert: true }
     );
     res.json(cart);
